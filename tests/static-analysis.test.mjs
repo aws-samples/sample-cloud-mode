@@ -1,5 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT-0
 
 /**
  * The static-analysis gate must not be able to become a silent no-op.

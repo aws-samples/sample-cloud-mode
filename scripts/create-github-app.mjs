@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT-0
 
 /**
  * Create the Cloud Mode GitHub App via the App Manifest flow and wire up secrets.

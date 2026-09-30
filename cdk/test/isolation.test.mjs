@@ -1,5 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT-0
 
 /**
  * Infrastructure assertions for the credential split, plus the guard that lets an isolated TEST stack be

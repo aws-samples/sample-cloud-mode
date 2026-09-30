@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT-0
 #
 # Enable ECR scan-on-push for the CDK asset repository that holds the Cloud Mode
 # worker image.
