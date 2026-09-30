@@ -1,0 +1,18 @@
+{
+  "name": "cloud-mode-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bedrock AgentCore runtime container wrapping pi (clone → solve story → open PR, with live interaction).",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.658.0",
+    "@aws-sdk/client-secrets-manager": "^3.658.0",
+    "@aws-sdk/client-sts": "^3.658.0",
+    "@aws-sdk/credential-provider-node": "^3.658.0",
+    "@earendil-works/pi-coding-agent": "0.84.2"
+  }
+}

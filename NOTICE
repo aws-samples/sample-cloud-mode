@@ -1,0 +1,17 @@
+Pi Cloud Mode Extension
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+PROOF OF CONCEPT — NOT PRODUCTION-READY.
+
+This is sample code, published to demonstrate a design. It is not a supported
+AWS service or offering, it is not production-ready, and it is provided "AS IS"
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied (see
+LICENSE, Apache License 2.0).
+
+Deploying or adapting this content is your own responsibility and requires your
+own security and legal review — in particular of the untrusted-execution
+isolation boundary (worker/sandbox.mjs) and of the fact that an AWS
+bedrock-agentcore:InvokeAgentRuntime permission on the deployed runtime is
+transitively GitHub write access to every repository the Cloud Mode GitHub App
+is installed on. See the "Security considerations" section of README.md and
+docs/agent-isolation.md.

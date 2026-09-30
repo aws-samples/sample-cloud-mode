@@ -1,0 +1,139 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Cloud Mode static-analysis ruleset.
+#
+# Local rules only — NO registry download, so the gate runs identically offline,
+# in a fresh clone, and on a machine that has never seen this project. Rules are
+# written against the classes that actually apply to this codebase (memory-safe
+# languages, but a system that deliberately executes untrusted repository code
+# and shell commands derived from model output):
+#
+#   ERROR   → blocks the build (injection, hardcoded secrets, TLS downgrade,
+#             timing-unsafe secret comparison, weak randomness for secrets)
+#   WARNING → reported, does not block (hygiene, IAM breadth, review prompts)
+#
+# Annotate a genuine false positive at the call site with
+# `nosemgrep: <rule-id>` plus a one-line reason — that comment IS the triage
+# record.
+rules:
+  # ── Injection ───────────────────────────────────────────────────────────────
+  - id: cloud-mode-shell-injection
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Shell command built from an interpolated string. Untrusted input (story
+      text, repository content, model output) reaches child processes in this
+      system; use execFile/spawn with an argument array instead of a shell.
+    pattern-either:
+      - pattern: require("child_process").exec(`...`, ...)
+      - pattern: |
+          $CP.exec(`...`, ...)
+      - pattern: |
+          $CP.execSync(`...`, ...)
+      - pattern: |
+          exec(`...`, ...)
+      - pattern: |
+          execSync(`...`, ...)
+
+  - id: cloud-mode-shell-true
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      spawn/execFile with `shell: true` reintroduces shell metacharacter
+      handling. Prefer an argument array without a shell.
+    pattern: |
+      {..., shell: true, ...}
+
+  - id: cloud-mode-dynamic-code-execution
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Dynamic code execution (eval / new Function). Model output and repository
+      content are untrusted inputs here; there is no safe use of eval.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  # ── Secrets ─────────────────────────────────────────────────────────────────
+  - id: cloud-mode-hardcoded-secret
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Possible hardcoded credential. Secrets belong in Secrets Manager and are
+      resolved at runtime; never in source, image layers, or config defaults.
+    patterns:
+      - pattern-regex: >-
+          (?i)\b(password|passwd|secret|secretkey|privatekey|private_key|apikey|api_key|access_key|accesskey|token|bearer)\s*[:=]\s*["'`][^"'`$\n]{12,}["'`]
+      - pattern-not-regex: (?i)(process\.env|_SECRET|_ENV|example|placeholder|redacted|<[a-z-]+>|xxx)
+
+  - id: cloud-mode-secret-in-log
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      Logging a value whose name suggests a secret. Secrets must never reach
+      stdout, CloudWatch, or a transcript artifact.
+    pattern-regex: >-
+      console\.(log|info|warn|error)\([^)]*\b(privateKey|secretAccessKey|sessionToken|ownerToken|installationToken|password|bearer)\b
+
+  # ── Crypto / comparison ─────────────────────────────────────────────────────
+  - id: cloud-mode-weak-randomness-for-secret
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Math.random() is not cryptographically secure. Session ids, owner tokens
+      and bearer tokens must come from crypto.randomBytes.
+    patterns:
+      - pattern-regex: >-
+          (?i)(token|secret|session|nonce|salt|key|id)\s*[:=][^;\n]*Math\.random\(\)
+
+  - id: cloud-mode-timing-unsafe-secret-compare
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Secret compared with ==/=== (timing-unsafe). Use
+      crypto.timingSafeEqual on equal-length buffers.
+    # Comparing against a type/undefined literal is a shape check, not a secret
+    # comparison, so those are excluded.
+    pattern-regex: >-
+      (?i)\b(ownerToken|authToken|bearerToken|expectedToken|brokerToken)\b\s*[=!]={1,2}(?!=)(?!\s*(["']string["']|undefined|null))
+
+  # ── Transport ───────────────────────────────────────────────────────────────
+  - id: cloud-mode-tls-verification-disabled
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      TLS certificate verification disabled. Every remote hop in this system
+      (AgentCore, Bedrock, Secrets Manager, S3, git) must verify certificates.
+    pattern-either:
+      - pattern: |
+          {..., rejectUnauthorized: false, ...}
+      - pattern-regex: NODE_TLS_REJECT_UNAUTHORIZED\s*[:=]\s*["']?0
+
+  - id: cloud-mode-plaintext-http
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Plaintext http:// endpoint. Only loopback (127.0.0.1 / localhost) may be
+      unencrypted; everything else must be https://.
+    patterns:
+      - pattern-regex: '["'']http://(?!127\.0\.0\.1|localhost|\$\{)[^"''\s]+["'']'
+
+  # ── Infrastructure breadth (review prompts, non-blocking) ──────────────────
+  - id: cloud-mode-iam-wildcard-resource
+    languages: [typescript]
+    severity: WARNING
+    message: >-
+      IAM statement with a wildcard resource. Scope to an ARN unless the API
+      takes no resource; if unavoidable, annotate why.
+    pattern: |
+      {..., resources: ["*"], ...}
+
+  - id: cloud-mode-iam-wildcard-action
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      IAM statement with a wildcard action grants far more than any component
+      here needs. Enumerate the actions.
+    pattern-regex: >-
+      actions:\s*\[\s*["'](\*|[a-z0-9-]+:\*)["']

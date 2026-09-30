@@ -1,0 +1,8 @@
+{
+  "region": "eu-central-1",
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:eu-central-1:123456789012:runtime/cloud_mode_worker-XXXXXXXXXX",
+  "qualifier": "DEFAULT",
+  "githubOwner": "your-github-user-or-org",
+  "maxConcurrentAgents": 5,
+  "deliveryMode": "pull-request"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "pi-cloud-mode-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build/verify entry point for the Cloud Mode extension, worker and CDK app.",
+  "type": "module",
+  "scripts": {
+    "verify": "npm run test && npm run test:infra && npm run sast",
+    "_comment_typecheck": "Advisory only: the extension's peer deps (pi SDK/TUI) are provided by the host at runtime and are not installed here, so tsc reports missing modules in a bare clone.",
+    "typecheck": "npm run typecheck:ext && npm run typecheck:cdk",
+    "typecheck:ext": "cd .pi/extensions/cloud-mode && npx --no-install tsc --noEmit -p tsconfig.json",
+    "typecheck:cdk": "cd cdk && npx --no-install tsc --noEmit cloud-mode-stack.ts --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "test:infra": "node --test \"cdk/test/*.test.mjs\"",
+    "sast": "./scripts/static-analysis.sh",
+    "audit": "for p in worker cdk .pi/extensions/cloud-mode; do (cd $p && npm audit --omit=dev --audit-level=high) || exit 1; done"
+  }
+}

@@ -1,59 +1,103 @@
-# Contributing Guidelines
+# Development & Operations
 
-Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
-documentation, we greatly value feedback and contributions from our community.
+## Deployed environment (your account)
 
-Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
-information to effectively respond to your bug report or contribution.
+The stack deploys into **your own** AWS account and region — e.g.
+**`aws://123456789012/us-east-1`** (`123456789012` is a placeholder; never commit
+a real account id). Key outputs (mirrored into the local, git-ignored
+`.pi/cloud-mode.json`):
 
+| Output | Value |
+|--------|-------|
+| Agent runtime ARN | `AgentRuntimeArn` (paste into `.pi/cloud-mode.json`) |
+| Runtime endpoint | `DEFAULT` |
+| Runtime role | `RuntimeRoleArn` |
+| Operator role | `OperatorRoleArn` |
 
-## Reporting Bugs/Feature Requests
+Re-print anytime:
 
-We welcome you to use the GitHub issue tracker to report bugs or suggest features.
+```bash
+aws cloudformation describe-stacks --stack-name CloudModeStack \
+  --query "Stacks[0].Outputs" --output table
+```
 
-When filing an issue, please check existing open, or recently closed, issues to make sure somebody else hasn't already
-reported the issue. Please try to include as much information as you can. Details like these are incredibly useful:
+## Remaining manual steps (cannot be automated)
 
-* A reproducible test case or series of steps
-* The version of our code being used
-* Any modifications you've made relevant to the bug
-* Anything unusual about your environment or deployment
+1. **Create a GitHub App** (Settings → Developer settings → GitHub Apps):
+   - Permissions: `Contents: Read & write`, `Pull requests: Read & write`
+   - Install it on **only the specific repositories** Cloud Mode may write to —
+     "All repositories" is not a supported configuration (see the README's
+     Security considerations)
+   - Note the **App ID** + **Installation ID**, generate a **private key** (`.pem`)
+2. **Populate secrets** (GitHub App creds; the LLM uses Bedrock via the runtime role, no key):
+   ```bash
+   GH_APP_ID=... GH_INSTALLATION_ID=... \
+   GH_PRIVATE_KEY_FILE=./god-agent.private-key.pem \
+   REGION=us-east-1 \
+   ./scripts/put-secrets.sh
+   ```
+3. In pi: `/cloud-mode-repo` → pick a repo → delegate a story → `/cloud-mode`.
 
+## Type-checking the extension
 
-## Contributing via Pull Requests
-Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+```bash
+cd .pi/extensions/cloud-mode
+npm install
+npx tsc -p tsconfig.json   # noEmit, strict
+```
 
-1. You are working against the latest source on the *main* branch.
-2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
-3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
+(The `@earendil-works/*` and `typebox` types resolve from pi's own install at
+runtime via jiti; for standalone editor/tsc checks symlink them into
+`node_modules/` or run inside a project where pi is installed.)
 
-To send us a pull request, please:
+## CDK
 
-1. Fork the repository.
-2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Ensure local tests pass.
-4. Commit to your fork using clear commit messages.
-5. Send us a pull request, answering any default questions in the pull request interface.
-6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+```bash
+cd cdk
+npm install
+npx cdk diff
+npx cdk deploy --require-approval never
+npx cdk destroy            # tear everything down (stops recurring cost)
+```
 
-GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
-[creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
+## Cost note
 
+AgentCore Runtime is **serverless** and session-scoped: you pay only while a
+delegated agent is actively running an invoke (no idle cluster, no NAT gateway).
+Use `/cloud-mode-stop` to end a runaway agent, and `cdk destroy` to remove the
+runtime + roles + secrets entirely.
 
-## Finding contributions to work on
-Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
+## Security-control checklist (required for every change that touches a control)
 
+`docs/agent-isolation.md` and the README make claims about this code, and
+every one of those claims is enforced by source that keeps changing. A
+control without a test is a comment. So:
 
-## Code of Conduct
-This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
-For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact
-opensource-codeofconduct@amazon.com with any additional questions or comments.
+- [ ] **Ship a test that fails if the control is removed.** Not a test that the
+      happy path works — a test that asserts the *denial*: the payload is
+      rejected, the push is refused, the path is confined, the secret is masked.
+- [ ] **Add a SAST rule when the control class is statically detectable.**
+      `scripts/sast-rules.yml` already covers shell/dynamic-code injection,
+      hardcoded or logged secrets, `Math.random()` for tokens, timing-unsafe
+      comparison, TLS downgrade, non-loopback plaintext HTTP and wildcard IAM
+      resources. If your control introduces a new "never write this again"
+      pattern, encode it there — and extend `tests/static-analysis.test.mjs`, so
+      the rule itself cannot decay into a no-op.
+- [ ] **Update `docs/agent-isolation.md` in the same change** if the boundary,
+      what it holds, or what it does not cover has changed. Documentation that
+      overclaims is worse than none, because it stops people looking.
+- [ ] **Keep defaults safe.** If a control can be turned off, the off-switch is
+      an explicit opt-out (`CLOUD_MODE_*=0`), never the default, and its use is
+      reported at delivery time.
+- [ ] **`npm run verify` is green** (unit tests + CDK invariants + SAST).
 
+### Recurring hygiene (not fixable once, so it is scheduled)
 
-## Security issue notifications
-If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+| What | Where | Cadence |
+|------|-------|---------|
+| Dependency advisories (`npm audit`, OSV) | `.github/workflows/audit.yml` | weekly + on PR |
+| Base-image digest drift / Debian CVEs | `.github/workflows/base-image-refresh.yml` | monthly |
+| ECR scan-on-push findings | `scripts/enable-ecr-scanning.sh` | every image push |
 
-
-## Licensing
-
-See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+A red run on any of these is a review task, not noise: dependency and
+base-image drift cannot be fixed once and are managed by this schedule.

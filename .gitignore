@@ -1,0 +1,40 @@
+# Ignore the `build/` directory in the package root.
+/build
+
+# Node / deps
+node_modules/
+npm-debug.log*
+*.log
+
+# Env / secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+
+# Local cloud-mode state (selected repo)
+.pi/cloud-mode.state.json
+# Local cloud-mode config (account-specific infra IDs from cdk deploy)
+.pi/cloud-mode.json
+
+# CDK
+cdk/cdk.out/
+cdk/*.d.ts
+
+# Generated docs (rendered from docs/*.md via scripts/render-threat-model.mjs)
+docs/*.html
+
+# OS
+.DS_Store
+
+# Local IDE/agent settings and internal review artifacts (never published)
+.kiro/
+demo/
+spike/
+evidence/
+*.docx
+ONE-PAGER*
+one_pager*
+
+# CDK context cache (contains the deploying account's id / AZ lookups — regenerate locally)
+cdk/cdk.context.json

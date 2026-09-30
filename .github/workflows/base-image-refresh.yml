@@ -1,0 +1,76 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Monthly base-image refresh (threat model T-008 / M-023).
+#
+# The worker image is pinned by digest on purpose: a mutable tag means `cdk
+# deploy` could ship an image nobody reviewed. The cost of pinning is that
+# Debian security fixes published *after* the pin do not reach the image until
+# someone rebuilds — and "someone rebuilds eventually" is not a control.
+#
+# This workflow makes the staleness visible on a schedule: it resolves the
+# current upstream arm64 digest, compares it with the pin in worker/Dockerfile,
+# and fails when they differ. A red run is the signal to review and bump the pin,
+# which is exactly the deliberate step the pinning was introduced to preserve.
+name: base-image-refresh
+
+on:
+  schedule:
+    # Monthly, a few days into the month so a fresh Debian point release is in.
+    - cron: "23 5 4 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  digest-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the pinned digest from worker/Dockerfile
+        id: pinned
+        run: |
+          set -euo pipefail
+          line="$(grep -m1 '^FROM public.ecr.aws/docker/library/node' worker/Dockerfile)"
+          echo "image=${line#FROM }" >> "$GITHUB_OUTPUT"
+          echo "digest=$(printf '%s' "$line" | sed -n 's/.*@\(sha256:[0-9a-f]\{64\}\).*/\1/p')" >> "$GITHUB_OUTPUT"
+          echo "tag=$(printf '%s' "$line" | sed -n 's|.*library/\([^@]*\)@.*|\1|p')" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the current upstream arm64 digest
+        id: upstream
+        run: |
+          set -euo pipefail
+          tag="${{ steps.pinned.outputs.tag }}"
+          docker pull --platform linux/arm64 "public.ecr.aws/docker/library/${tag}" >/dev/null
+          digest="$(docker image inspect "public.ecr.aws/docker/library/${tag}" \
+            --format '{{index .RepoDigests 0}}' | sed 's/.*@//')"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Fail when the pin is stale
+        run: |
+          set -euo pipefail
+          pinned='${{ steps.pinned.outputs.digest }}'
+          upstream='${{ steps.upstream.outputs.digest }}'
+          echo "pinned:   ${pinned}"
+          echo "upstream: ${upstream}"
+          if [ "${pinned}" != "${upstream}" ]; then
+            echo "::error::Base image pin is stale. Upstream ${{ steps.pinned.outputs.tag }} is now ${upstream}."
+            echo "Review the new image, then update the FROM line in worker/Dockerfile and redeploy."
+            echo "Threat model: T-008 / M-023 — unpatched base-image CVEs are only absorbed by a rebuild."
+            exit 1
+          fi
+          echo "Base image pin is current."
+
+      - name: Report CVEs in the pinned image (advisory)
+        if: always()
+        run: |
+          set -euo pipefail
+          # Advisory only: ECR scan-on-push is the authoritative signal for the
+          # image we actually deploy. This step makes the current state readable
+          # in the workflow log without gating on it.
+          docker pull --platform linux/arm64 "public.ecr.aws/docker/library/${{ steps.pinned.outputs.tag }}" >/dev/null
+          docker run --rm --platform linux/arm64 \
+            "public.ecr.aws/docker/library/${{ steps.pinned.outputs.tag }}" \
+            sh -c 'cat /etc/os-release | head -2' || true

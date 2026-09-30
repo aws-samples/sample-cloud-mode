@@ -1,0 +1,19 @@
+{
+  "name": "cloud-mode-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pi Cloud Mode: delegate user stories to isolated Bedrock AgentCore sub-agents and view/steer them inline as native pi sessions.",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.658.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "5.6"
+  }
+}

@@ -1,0 +1,78 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Supply-chain and unit-test gate (threat model T-008 / M-023).
+#
+# The worker container executes with credentials and lands code on default
+# branches, so a compromised dependency in worker/, the extension, or the CDK app
+# is a direct path to the App key and to the repository. Lockfiles are committed
+# and pi is pinned; this workflow makes a known-vulnerable dependency visible
+# instead of silently shipping in the next `cdk deploy`.
+name: audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # New advisories land against unchanged code, so re-run weekly.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - worker
+          - cdk
+          - .pi/extensions/cloud-mode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm audit (production dependencies)
+        working-directory: ${{ matrix.project }}
+        # Runtime dependencies are what ends up in the worker image; dev-only
+        # findings are reported but do not fail the gate.
+        run: |
+          npm audit --omit=dev --audit-level=high
+      - name: npm audit (dev, advisory only)
+        working-directory: ${{ matrix.project }}
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  osv-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: OSV scanner (lockfiles)
+        uses: google/osv-scanner-action/osv-scanner-action@v1
+        with:
+          scan-args: |-
+            --lockfile=worker/package-lock.json
+            --lockfile=cdk/package-lock.json
+            --lockfile=.pi/extensions/cloud-mode/package-lock.json
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install worker deps (pi SDK is needed by the worker modules)
+        working-directory: worker
+        run: npm ci --omit=dev
+      - name: install cdk deps
+        working-directory: cdk
+        run: npm ci
+      - name: worker + extension unit tests
+        run: node --test "tests/*.test.mjs"
+      - name: infrastructure assertions (IAM scoping, resource isolation)
+        run: node --test "cdk/test/*.test.mjs"
