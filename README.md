@@ -1,44 +1,71 @@
 # Sample: hosting an open-source coding agent on Amazon Bedrock AgentCore
 
-This repository is a **reference architecture** showing how to run an existing
-open-source coding agent — here, [pi](https://github.com/earendil-works/pi-mono) —
-as isolated, per-task sessions on **Amazon Bedrock AgentCore Runtime**, using
-**Amazon Bedrock**-hosted models, **AWS Secrets Manager**, **Amazon ECR**, IAM,
-and the **AWS CDK**, and delivering each task's result as a GitHub pull request.
-The agent framework is pluggable in principle; pi is used because it exposes an
-SDK and an extension API that make the delegation flow easy to demonstrate
-end-to-end. It is not a replacement for, or a reimplementation of, any AWS
-developer tool — it demonstrates how to *call* AWS services to host one.
+This sample runs the open-source coding agent [pi](https://github.com/earendil-works/pi-mono)
+on **Amazon Bedrock AgentCore Runtime**. From a local pi session you hand off a
+task (a "story"). The agent runs it in your AWS account and delivers the
+result to a GitHub repository.
 
-> **⚠️ Proof of concept — not production-ready.** This is sample code published to
-> demonstrate a design, provided "AS IS" without warranty of any kind (see
-> [LICENSE](LICENSE) and [NOTICE](NOTICE)). It is **not** a supported AWS service or
-> offering. Deploying it in your own environment requires **your own security and
-> legal review** — in particular of the isolation boundary and of the IAM ⇒ GitHub
-> write path described under [Security considerations](#security-considerations).
-> Do not run it against production repositories or production AWS accounts as-is.
+> **Sample code, not production-ready.** Provided "AS IS" under MIT-0 (see
+> [LICENSE](LICENSE) and [NOTICE](NOTICE)); not a supported AWS service. Review
+> it against your own security requirements before you deploy it, especially
+> [Security considerations](#security-considerations) and the
+> [IAM ⇒ GitHub access model](#access-model--iam--github-read-this-in-shared-aws-accounts).
 
-A native [pi](https://github.com/earendil-works/pi-mono) extension that turns your
-local pi session into a **Cloud Mode**: it delegates individual user stories to
-**isolated Bedrock AgentCore sub-agents**, each of which clones the target repo in
-a dedicated git worktree, solves the story with the pi SDK, and opens a pull
-request. Every sub-agent is a **real pi session** you can view and steer inline —
-viewing an agent looks and behaves like local pi (native transcript rendering).
+## What it does
+
+1. You ask pi to delegate a story. pi shows the target repository, base branch,
+   delivery mode and story text, and asks you to confirm.
+2. Each story runs in its own AgentCore session (a separate microVM). The agent
+   clones the repository with a short-lived GitHub App token, works in a
+   dedicated git worktree, and runs your validation command if you configured
+   one (`CLOUD_MODE_VALIDATE_CMD`).
+3. The result is a **pull request** (default) or a **direct commit to the
+   default branch** (`deliveryMode: "direct-merge"`).
+4. While an agent runs, you can watch its transcript live and steer or stop it
+   from your local pi session.
 
 ```
-Local pi session                          AWS
+Local pi session                          Your AWS account
 ┌───────────────────────────┐  Invoke   ┌────────────────────────────┐
 │ delegate_story (LLM tool)  │──────────▶│ AgentCore Runtime session   │
-│ /cloud-mode   (live panel) │   SSE     │  server.mjs → pi SDK agent  │
-│ alt+g         (open panel) │◀──────────│  → git worktree → PR        │
+│ /cloud-mode   (live panel) │   SSE     │  pi SDK agent               │
+│ alt+g         (open panel) │◀──────────│  → git worktree → PR/commit │
 │ overlay: watch/steer/stop  │  stream   │                             │
 └───────────────────────────┘           └────────────────────────────┘
 ```
 
-Viewing an agent is a **live overlay** that never switches your pi session:
-agent transcripts are buffered in memory and re-rendered the instant an event
-arrives, so you watch progress in real time and press `esc` to drop straight
-back into your own session.
+## What gets deployed
+
+One CDK stack (`cdk/`) creates:
+
+- an AgentCore Runtime and the worker container image (arm64, in Amazon ECR)
+- IAM roles for the runtime and for operators who invoke it
+- three AWS Secrets Manager secrets for the GitHub App credentials
+- an encrypted, versioned S3 bucket for session transcripts (deleted after 90 days)
+- CloudWatch log groups with bounded retention
+- by default, a VPC with a NAT gateway, AWS Network Firewall and VPC endpoints,
+  so the agent can reach only allow-listed domains
+
+## Things to know before you deploy
+
+- **Cost.** Restricted egress (the default) bills the NAT gateway, Network
+  Firewall and VPC endpoints **per hour, even when no agent is running**.
+  Each story also adds AgentCore session time and Bedrock tokens. To deploy
+  without restricted egress, use `CLOUD_MODE_RESTRICT_EGRESS=0`.
+- **Data stays in your account.** Prompts, source code and model calls go to
+  Amazon Bedrock with your credentials. The sample has no telemetry. The default
+  model is a cross-region inference profile; pin a regional model ID if data
+  residency matters (see [Your data and service improvement](#your-data-and-service-improvement)).
+- **What the agent can write to.** The GitHub App installation defines which
+  repositories the agent can push to. Install it on selected repositories
+  only. In pi, `delegableRepos` limits the targets further (default: the
+  repository you selected).
+- **Safeguards.** Delegation is refused if the default branch has no branch
+  protection or required status checks. Concurrent sessions are capped (default
+  5 per extension, 8 per runtime). Credential-shaped strings are masked in
+  transcripts and logs.
+- **Supported setups.** GitHub (github.com) only, AWS only, models on Amazon
+  Bedrock only. Details below.
 
 ## Requirements & limitations (read first)
 
@@ -52,7 +79,7 @@ Cloud Mode is currently **GitHub-only and AWS-only**:
 | Tooling | Node.js 20+, Docker (image build), `aws` CLI, `gh` CLI | — |
 | GitHub App scope | The App **must** be installed with **"Only select repositories"**, listing just the repos Cloud Mode may write to — that installation *is* the repository allow-list of the whole system | "All repositories" (an org-wide installation makes every risk in this system org-scoped) |
 | Worker image | Must ship the **compilers, runtimes, and libraries the target project needs to build and test** (see [Project toolchains in the worker image](#project-toolchains-in-the-worker-image)) | A stack whose toolchain isn't in the image (its validation step is skipped) |
-| 💰 Cost | Every delegated story starts a **billable** AgentCore session + Bedrock tokens (`maxConcurrentAgents` cap built in; launches are unattended) | — |
+| 💰 Cost | Every delegated story starts a **billable** AgentCore session + Bedrock tokens (`maxConcurrentAgents` cap built in; each launch asks for confirmation unless `autoConfirm` is set) | — |
 
 ## Quick start (recommended)
 
@@ -306,9 +333,9 @@ In a trusted project, start pi and:
   can in place. Prints the current restrictions and a final status report.
 - `/cloud-mode-repo` — pick (↑↓, type to filter) or create the target repo.
 - Ask the model to work, e.g. *"Delegate STORY-42: add pagination to the users API."*
-  The `delegate_story` tool launches a cloud agent immediately — no prompt, so
-  unattended batches never stall. A live status strip appears above your editor
-  right away.
+  The `delegate_story` tool asks you to confirm the repo, branch, delivery mode
+  and story, then launches a cloud agent (`autoConfirm: true` skips the prompt).
+  A live status strip appears above your editor right away.
 - `/cloud-mode` (or `alt+g`) — open the **live overlay panel**. It shows the
   selected agent's transcript and updates in real time as the agent works.
   - `←` / `→` (or `p` / `n`) — cycle between agents.
@@ -544,8 +571,8 @@ in the orchestrator's context.
 
 ## Cost & safety guards
 
-- `delegate_story` launches unattended (no per-launch confirm), so a delegated
-  batch never blocks on a click.
+- Each `delegate_story` launch asks for confirmation; `autoConfirm: true` (or
+  `CLOUD_MODE_AUTO_CONFIRM=1`) skips the prompt for unattended batches.
 - **Two concurrency caps.** `maxConcurrentAgents` (extension, default 5) gives
   fast feedback; `CLOUD_MODE_MAX_ACTIVE_SESSIONS` (worker, default 8) is the
   authoritative one, so a runaway retry loop or a second IAM principal cannot
