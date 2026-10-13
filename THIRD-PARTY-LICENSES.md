@@ -1,6 +1,7 @@
 # Third-Party Licenses
 
-Full transitive **production** dependencies, generated with `license-checker --production`.
+Full transitive **production** dependencies, generated with `license-checker --production --excludePrivatePackages`
+(this project's own packages are MIT-0; see LICENSE).
 Format: `<name>@<version> - <license>`
 
 ## worker
@@ -68,7 +69,6 @@ bowser@2.14.1 - MIT
 brace-expansion@5.0.12 - MIT
 buffer-equal-constant-time@1.0.1 - BSD-3-Clause
 chalk@6.0.0 - MIT
-cloud-mode-worker@1.0.0 - UNLICENSED
 cross-spawn@7.0.6 - MIT
 data-uri-to-buffer@4.0.1 - MIT
 debug@4.4.3 - MIT
@@ -142,7 +142,6 @@ aws-cdk-lib@2.273.0 - Apache-2.0
 balanced-match@4.0.4 - MIT
 brace-expansion@5.0.12 - MIT
 case@1.6.3 - (MIT OR GPL-3.0-or-later)
-cloud-mode-cdk@1.0.0 - UNLICENSED
 constructs@10.6.0 - Apache-2.0
 fs-extra@11.3.6 - MIT
 graceful-fs@4.2.11 - ISC
@@ -182,6 +181,4 @@ yaml@1.10.3 - ISC
 @smithy/signature-v4@5.6.2 - Apache-2.0
 @smithy/types@4.15.1 - Apache-2.0
 bowser@2.14.1 - MIT
-cloud-mode-extension@1.0.0 - UNLICENSED
 tslib@2.8.1 - 0BSD
-

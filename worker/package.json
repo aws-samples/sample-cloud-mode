@@ -2,6 +2,7 @@
   "name": "cloud-mode-worker",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT-0",
   "type": "module",
   "description": "Bedrock AgentCore runtime container wrapping pi (clone → solve story → open PR, with live interaction).",
   "main": "server.mjs",

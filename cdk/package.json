@@ -2,6 +2,7 @@
   "name": "cloud-mode-cdk",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT-0",
   "type": "module",
   "bin": { "cloud-mode": "bin/cloud-mode.ts" },
   "scripts": {

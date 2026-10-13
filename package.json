@@ -2,6 +2,7 @@
   "name": "pi-cloud-mode-extension",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT-0",
   "description": "Build/verify entry point for the Cloud Mode extension, worker and CDK app.",
   "type": "module",
   "scripts": {
