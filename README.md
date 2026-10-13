@@ -112,7 +112,7 @@ startup pointing you back to `/cloud-mode-setup`.
 
 ## Design decisions (baked in)
 
-1. **Package:** `@earendil-works/pi-coding-agent@0.84.2` (pinned, local + image).
+1. **Package:** `@earendil-works/pi-coding-agent@1.2.0` (pinned, local + image).
 2. **Backend:** **Bedrock AgentCore Runtime only** — single backend, thin transport seam.
 3. **Secrets:** GitHub App creds live in **AWS Secrets Manager**; the worker reads
    them via its runtime role. The LLM is reached via **Amazon Bedrock** using the
