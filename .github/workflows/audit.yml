@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: OSV scanner (lockfiles)
-        uses: google/osv-scanner-action/osv-scanner-action@v1
+        uses: google/osv-scanner-action/osv-scanner-action@2.7.0
         with:
           scan-args: |-
             --lockfile=worker/package-lock.json
