@@ -14,6 +14,6 @@
     "@aws-sdk/client-secrets-manager": "^3.658.0",
     "@aws-sdk/client-sts": "^3.658.0",
     "@aws-sdk/credential-provider-node": "^3.658.0",
-    "@earendil-works/pi-coding-agent": "1.2.0"
+    "@earendil-works/pi-coding-agent": "1.5.0"
   }
 }
